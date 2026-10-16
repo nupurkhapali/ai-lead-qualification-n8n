@@ -1,0 +1,647 @@
+{
+  "name": "AI Lead Qualification - Dubai Real Estate",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Find your Dubai property",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "email"
+            },
+            {
+              "fieldLabel": "phone"
+            },
+            {
+              "fieldLabel": "Message",
+              "fieldType": "textarea",
+              "placeholder": "Tell us what you’re looking for"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "240bf727-580a-43a6-83fb-f5941df05b03",
+      "name": "On form submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "5eca3467-98dc-496e-ad9a-cdefc61e9a99"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.Message }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a lead-qualification assistant for a Dubai real-estate agency. Read the enquiry (English, Arabic or mixed) and return ONLY a JSON object. No markdown, no commentary.  Schema: {   \"name\": string or null,   \"location\": string or null,   \"budget_aed\": number or null,   \"budget_text\": string or null,   \"bedrooms\": integer or null,   \"property_type\": \"apartment\" | \"villa\" | \"townhouse\" | \"penthouse\" | \"studio\" | \"other\" | null,   \"intent\": \"buy\" | \"rent\" | \"invest\" | \"unknown\",   \"priority\": \"high\" | \"medium\" | \"low\",   \"language\": \"en\" | \"ar\" | \"mixed\" | \"other\",   \"summary\": string,   \"score_reason\": string }  Rules: - location: standardise Dubai areas, e.g. \"Dubai Marina\", \"Downtown Dubai\",   \"JVC\", \"Business Bay\", \"Palm Jumeirah\", \"JLT\", \"Dubai Hills Estate\",   \"Dubai Creek Harbour\", \"Al Barsha\", \"Arabian Ranches\", \"MBR City\".   If several areas, use the main one. Null if none. - budget_aed: whole number in AED. For rent, use the yearly rent.   \"2M\" or \"2 million\" = 2000000, \"800k\" = 800000, Arabic numerals and   \"مليون\" count too. USD: multiply by 3.6725. Other currencies: null. - budget_text: the budget exactly as the person wrote it. - bedrooms: studio = 0. Null if not stated. - priority: high = wants to move now, urgent, cash buyer, wants a viewing,   or timeline under 1 month. medium = timeline 1-6 months or actively   searching. low = just browsing or no timeline. - summary: one English sentence. - score_reason: max 20 words, why you chose this priority. - Never invent data. Use null when something is not stated."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "7c47ecac-0ae1-480c-a516-072375689d48",
+      "name": "Basic LLM Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        224,
+        0
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "bc8708c0-598e-44d7-bf1e-f13a7e488146",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        112
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hZHmoyc8OKzXDWW8",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || '';\nconst form = $('On form submission').first().json;\n\nlet d = null, valid = true, error = '';\ntry {\n  d = JSON.parse(raw.replace(/```json|```/g, '').trim());\n} catch (e) {\n  valid = false;\n  error = 'Invalid JSON: ' + e.message;\n}\n\nif (valid && !['high', 'medium', 'low'].includes(d.priority)) { valid = false; error = 'Bad priority value'; }\nif (valid && !['buy', 'rent', 'invest', 'unknown'].includes(d.intent)) { valid = false; error = 'Bad intent value'; }\n\nlet score = 'Cold', points = 0;\nif (valid) {\n  let b = Number(d.budget_aed) || 0;\n  if (d.intent === 'rent') b = b * 10; // rough: yearly rent -> purchase-equivalent\n  if (b >= 2000000) points += 3; else if (b >= 800000) points += 2; else if (b > 0) points += 1;\n  points += { high: 3, medium: 2, low: 0 }[d.priority];\n  if (d.location) points += 1;\n  if (d.bedrooms !== null && d.bedrooms !== undefined) points += 1;\n  score = points >= 6 ? 'Hot' : points >= 4 ? 'Warm' : 'Cold';\n}\n\nreturn [{ json: {\n  valid, error, score, points,\n  timestamp: form.submittedAt || new Date().toISOString(),\n  name: d?.name ?? '', email: form.email || form.Email || '', phone: form.phone || form.Phone || '', message: form.Message,\n  location: d?.location ?? '', budget_aed: d?.budget_aed ?? '', budget_text: d?.budget_text ?? '',\n  bedrooms: d?.bedrooms ?? '', property_type: d?.property_type ?? '', intent: d?.intent ?? '',\n  priority: d?.priority ?? '', language: d?.language ?? '',\n  reason: d?.score_reason ?? '', summary: d?.summary ?? '',\n  status: 'New', raw_output: raw\n}}];"
+      },
+      "id": "94d9e2f6-aaf5-4251-9b7a-66a883bdebd2",
+      "name": "Parse and Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "892933ec-bdf5-448d-84e2-3c0c6b7421d9",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "0d2ec65d-537b-4954-961f-8aceac93d4e1",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "budget_aed",
+              "displayName": "budget_aed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "budget_text",
+              "displayName": "budget_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bedrooms",
+              "displayName": "bedrooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "property_type",
+              "displayName": "property_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "points",
+              "displayName": "points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "931ad7b6-b13e-4403-af42-c85c445ecc23",
+      "name": "valid",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        -32
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ovurLvh2y3uauHqV",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "Thanks for your enquiry, we'll be in touch shortly",
+        "message": "=Hi {{ $json.name || 'there' }},  Thank you for your enquiry about {{ $json.location || 'Dubai property' }}. One of our advisors will contact you shortly.  {{ ['ar','mixed'].includes($json.language) ? 'شكراً لتواصلك معنا. سيتواصل معك أحد مستشارينا قريباً.' : '' }}  Palm & Co Realty (demo)",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "3a08bf01-9073-41b6-8514-e23034635cac",
+      "name": "Send a message",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1056,
+        96
+      ],
+      "webhookId": "a7f0b5e1-a763-4f0d-a0f1-abd44743fe75",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S1Wt7NgPpnRBcJWj",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a6d3bf75-e519-4a6f-9710-10f5b4089a93",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": "cold",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "433053b9-1cca-4895-abb5-3d19e31f8f25",
+      "name": "hot or warm",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1232,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "sales@example.com",
+        "subject": "={{ $json.score }} lead: {{ $json.name || 'Unknown' }} - {{ $json.location }}",
+        "message": "summary, budget, bedrooms, priority, reason, email and phone.",
+        "options": {}
+      },
+      "id": "caeccd0f-b934-4003-bfaa-4de5a244f33d",
+      "name": "inform sales",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1456,
+        32
+      ],
+      "webhookId": "12511c80-d02f-4d02-8860-0a80ccb410bc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S1Wt7NgPpnRBcJWj",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1635260171,
+          "mode": "list",
+          "cachedResultName": "Needs Review",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C0RDlHyHjv-JpREB6TOlhvmRBvoghPtaXPxaO8aq93s/edit#gid=1635260171"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $('On form submission').item.json.email }}",
+            "message": "={{ $('On form submission').item.json.Message }}",
+            "timestamp": "={{ $('On form submission').item.json.submittedAt }}",
+            "error": "={{ $json.error }}",
+            "raw_output": "={{ $json.raw_output }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "raw_output",
+              "displayName": "raw_output",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "81748bea-0dad-4bce-a157-9a1ea116051b",
+      "name": "invalid",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        272
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ovurLvh2y3uauHqV",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "hooks.slack.com",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "Fail",
+              "value": "={{ JSON.stringify({ text: '⚠️ Lead failed validation: ' + $json.error + ' | ' + $json.email }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "183d04a7-c87b-4bbb-ac8e-7f54ddd46f49",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1296,
+        272
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Parse and Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Score": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "valid",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hot or warm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hot or warm": {
+      "main": [
+        [
+          {
+            "node": "inform sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "invalid": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "wyoGaMldViDqWVVo"
+  },
+  "versionId": "33cecb9d-4ab8-4be7-98d0-9b261342f928",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "81b4d1b9bbae33117cc3eb140f18c848d631315478d02e6c75be6ae2dced50ef"
+  },
+  "nodeGroups": [],
+  "id": "F8WqOkhViy0M35lf",
+  "tags": []
+}
