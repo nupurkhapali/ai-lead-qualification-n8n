@@ -1,0 +1,66 @@
+{
+  "name": "Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "8659c57a-8e62-4741-9898-35b18671777b",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=🚨 Workflow failed: {{ $json.workflow.name }}\n{{ $json.execution.error.message }}\n{{ $json.execution.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b01c598a-418a-4a3a-932c-59bab4555d69",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "fd0b85b5-614e-4534-b9d8-0907ce990a59",
+  "meta": {
+    "instanceId": "81b4d1b9bbae33117cc3eb140f18c848d631315478d02e6c75be6ae2dced50ef"
+  },
+  "nodeGroups": [],
+  "id": "wyoGaMldViDqWVVo",
+  "tags": []
+}
